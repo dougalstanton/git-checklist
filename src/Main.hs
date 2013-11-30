@@ -24,11 +24,11 @@ getGitDir = head <$> git "rev-parse --show-cdup" >>= \move -> return $ move ++ "
 
 data ToDo = ToDo { description :: String
                  , complete    :: Bool
-                 } deriving (Read, Show)
+                 } deriving (Eq, Read, Show)
 
 data Checklist = Checklist { branch :: String
                            , todos  :: [ToDo]
-                           } deriving Show
+                           } deriving (Eq,Show)
 
 -- Loading and saving data (by cheating).
 
@@ -90,14 +90,28 @@ printKey checklist = if length (todos checklist) == 0
 modifyChecklist f branch = do
     checklist <- getChecklist branch
     printKey checklist
-    putChecklist (f checklist)
+    let newlist = f checklist
+    if newlist == checklist
+        then return newlist
+        else putChecklist newlist
+
+usingArgs :: ([String] -> Checklist -> Checklist) -> [String] -> IO ()
+usingArgs _ []   = return ()
+usingArgs f args = do
+    let (altbranch,unused) = case args of
+                            ("-b":b:r)       -> (Just b, r)
+                            ("--branch":b:r) -> (Just b, r)
+                            _                -> (Nothing,args)
+    branch <- maybe getBranch return altbranch
+    modifyChecklist (f unused) branch >>= printChecklist
 
 main = do
     args <- getArgs
     case args of
-        []           -> getBranch >>= getChecklist >>= \c -> printKey c >> printChecklist c
-        ("add":rest) -> getBranch >>= modifyChecklist (add (unwords rest))  >>= printChecklist
-        ("del":n:_)  -> getBranch >>= modifyChecklist (remove (read n)) >>= printChecklist
-        ("done":n:_) -> getBranch >>= modifyChecklist (done (read n)) >>= printChecklist
-        ("undo":n:_) -> getBranch >>= modifyChecklist (undo (read n)) >>= printChecklist
-        _            -> putStrLn "Not implemented yet."
+        []            -> getBranch >>= getChecklist >>= \c -> printKey c >> printChecklist c
+        ("show":rest) -> const id `usingArgs` rest
+        ("add":rest)  -> (add . unwords) `usingArgs` rest
+        ("del":rest)  -> (remove . read . head) `usingArgs` rest
+        ("done":rest) -> (done . read . head) `usingArgs` rest
+        ("undo":rest) -> (undo . read . head) `usingArgs` rest
+        _             -> putStrLn "Not implemented yet."
