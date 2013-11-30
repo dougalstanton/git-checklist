@@ -88,9 +88,5 @@ longer look as pretty because only 1 character is allowed for the
 numbers. Any more than that and the checkboxes no longer line up --- not
 pretty!
 
-If you're in a branch you have to `git checkout` another branch in order
-to add a TODO to that second branch's list. This is the first thing I'm
-planning to change.
-
 It doesn't cope very well with not being somewhere inside a repository.
 It shouldn't wreck anything but the error message isn't very refined.
