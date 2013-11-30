@@ -3,6 +3,10 @@ module Main where
 import Control.Applicative
 import Control.Exception
 
+import Data.Monoid
+
+import Options.Applicative
+
 import System.Exit
 import System.Environment
 import System.FilePath ((</>))
@@ -104,6 +108,43 @@ usingArgs f args = do
                             _                -> (Nothing,args)
     branch <- maybe getBranch return altbranch
     modifyChecklist (f unused) branch >>= printChecklist
+
+data Option = Option Common Action deriving Show
+
+data Common = Common (Maybe String) deriving Show
+instance Monoid Common where
+    mempty = Common Nothing
+    (Common l) `mappend` (Common r) = Common (l <> r)
+
+common :: Parser Common
+common = Common <$> branchname
+    where branchname = optional $ strOption (long "branch" <> short 'b' <> metavar "BRANCH")
+
+data Action = Show | Add String | Remove Int | Done Int | Undo Int deriving Show
+
+option :: Parser Option
+option = subparser $ mconcat
+            [ command "show" (info (Option <$> common <*> pure Show)
+                                   (progDesc "Show current TODOs"))
+            , command "add" (info (Option <$> common <*> addParser)
+                                  (progDesc "Add a TODO"))
+            , command "remove" (info (Option <$> common <*> remParser)
+                                     (progDesc "Remove a TODO: Warning!"))
+            , command "done" (info (Option <$> common <*> doneParser)
+                                   (progDesc "Mark a TODO as done."))
+            , command "undo" (info (Option <$> common <*> undoParser)
+                                   (progDesc "Item needs redone!"))
+            ] -- <|> nullOption (value (Option mempty Show))
+    where addParser = Add . unwords <$> arguments str (metavar "DESCRIPTION")
+          remParser = Remove <$> argument auto (metavar "N")
+          doneParser= Done <$> argument auto (metavar "N")
+          undoParser= Undo <$> argument auto (metavar "N")
+
+blank :: Parser Option
+blank = nullOption (value (Option mempty Show))
+
+argParser = info (blank <|> Main.option)
+                    (progDesc "Per-branch TODO list for Git repositories")
 
 main = do
     args <- getArgs
