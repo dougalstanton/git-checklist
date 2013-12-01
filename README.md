@@ -19,13 +19,28 @@ Otherwise, like this:
 To view your TODOs, just enter the bare command from a git repository:
 
     $ git todo
-    key: add <description>
+
+Well, if you've not got anything to do yet, it won't have anything to
+show you. Find out where to go next:
+
+    $ git todo --help
+    Usage: git-checklist ([ARG] | [COMMAND])
+      Per-branch TODO list for Git repositories
+
+    Available options:
+      -h,--help                Show this help text
+
+    Available commands:
+      show                     Show current TODOs
+      add                      Add a TODO
+      done                     Mark a TODO as done.
+      undo                     Item needs redone!
+      remove                   Remove a TODO (can't be undone)
 
 It will give you a summary of the commands you can enter at this point.
 There are no entries yet so all you can do is add them.
 
     $ git todo add Add an informative README file
-    key: add <description>
     1: [ ] Add an informative README file
 
 Each entry has a number in the left column and a box. Empty boxes mean
@@ -33,7 +48,6 @@ the item is still to be done. When you've finished a task, mark it done
 using the number as a reference:
 
     $ git todo done 1
-    key: add <description> | done <n> | undo <n> | del <n>
     1: [x] Add an informative README file
 
 You can also "undo" items if you realise that the fix you made wasn't so
@@ -43,6 +57,20 @@ other reason.
 Finally you can remove items entirely from the list. This is permanent
 and can't be undone.
 
+## Advanced Usage
+
+If you're knee deep in work on one branch and you'd like to change the
+checklist for another branch, all the commands will recognise the
+`--branch` (or `-b`) option.
+
+    $ git todo add --branch newparser Make nicer error messages
+
+If you want to start a description of your note with a hyphen you can
+separate it from the rest of the command options with a double-hyphen on
+its own.
+
+    $ git todo add -- -b stopped working but --branch still okay
+
 ## Background Details
 
 The checklists are stored in `.git/checklist/<branchname>` in a
@@ -51,13 +79,13 @@ open up one of these files it's easy to edit though you might find
 breakage occurs!
 
 The checklist for the working directory is whatever branch name is
-pointed to by `HEAD`. I have not tested it with a detached head though I
+pointed to by `HEAD`. I have not tested it with a detached head, though I
 guess you'd just end up with a SHA as a branch name.
 
 ## Installing It Is Fairly Easy
 
 Assuming you've got a Haskell installation (if not, [grab the Haskell
-platform] [hp] you can grab the source and build with Cabal.
+platform] [hp]) you can grab the source and build with Cabal.
 
     $ git clone http://github.com/dougalstanton/git-checklist
     $ cd git-checklist
@@ -74,8 +102,7 @@ versioned --- this is a local list only. I am open to suggestions to
 make this versioned though it is not a priority for me. My workflow is
 based around a single computer.
 
-The read/write step bashes into the awkwardness of lazy IO. The key
-printed to the screen is just a quick hack to get around that.
+The read/write step bashes into the awkwardness of lazy IO.
 
 The serialisation is quick-and-dirty using Haskell's `deriving
 (Read,Show)` functionality which means not only is it brittle but the
