@@ -62,6 +62,7 @@ run (Remove n) (Checklist b ts) = let del = map snd . filter (\i -> n /= fst i)
 run (Done   n) (Checklist b ts) = Checklist b (mark True n `withNumbered` ts)
 run (Undo   n) (Checklist b ts) = Checklist b (mark False n `withNumbered` ts)
 run Show       c                = c
+run Stats      c                = c
 
 withNumbered :: ([(Int,a)] -> [a]) -> [a] -> [a]
 f `withNumbered` as = f $ zip [1..] as
@@ -84,13 +85,20 @@ prettyChecklist = zipWith f [1..] . map prettyTodo . todos
 printChecklist :: Checklist -> IO ()
 printChecklist = putStr . unlines . prettyChecklist
 
+printStats :: Checklist -> IO ()
+printStats (Checklist br ts)= putStrLn $ br ++ ": " ++ pending ++ " task to do (" ++ total ++ " total)"
+    where pending = show $ length $ filter (not . complete) ts
+          total    = show $ length ts
+
 -- 
 
 modifyChecklist act branch = do
     checklist <- getChecklist branch
     let newlist = run act checklist
     when (newlist /= checklist) (putChecklist newlist)
-    printChecklist newlist
+    if act == Stats
+        then printStats newlist
+        else printChecklist newlist
 
 usingArgs :: Option -> IO ()
 usingArgs opts = do
@@ -110,7 +118,8 @@ common :: Parser Common
 common = Common <$> branchname
     where branchname = optional $ strOption (long "branch" <> short 'b' <> metavar "BRANCH")
 
-data Action = Show | Add String | Remove Int | Done Int | Undo Int deriving Show
+data Action = Show | Stats | Add String | Remove Int | Done Int | Undo Int
+                deriving (Eq, Show)
 
 option :: Parser Option
 option = subparser $ mconcat
@@ -124,11 +133,14 @@ option = subparser $ mconcat
                                    (progDesc "Item needs redone!"))
             , command "remove" (info (Option <$> common <*> remove)
                                      (progDesc "Remove a TODO (can't be undone)"))
+            , command "stats" (info (Option <$> common <*> stats)
+                                    (progDesc "Summary statistics of checklist"))
             ]
     where add    = Add . unwords <$> arguments str (metavar "DESCRIPTION")
           remove = Remove <$> argument auto (metavar "N")
           done   = Done <$> argument auto (metavar "N")
           undo   = Undo <$> argument auto (metavar "N")
+          stats  = pure Stats
 
 blank :: Parser Option
 blank = nullOption (value (Option mempty Show))
