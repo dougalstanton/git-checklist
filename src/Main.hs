@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
 import Control.Applicative
@@ -18,7 +19,7 @@ import System.Process (readProcess)
 
 git :: String -> IO [String]
 git args = lines <$> readProcess "git" (words args) []
-            `catch` \e -> do let x = e :: IOException
+            `catch` \(e :: IOException) -> do
                              putStrLn "Something went wrong, maybe you're not in a Git repository?"
                              exitFailure
 
@@ -41,8 +42,13 @@ putChecklist :: Checklist -> IO ()
 putChecklist checklist = do
     root <- getGitDir
     let listdir = root </> "checklist"
+        output  = todos checklist
     createDirectoryIfMissing False listdir
-    writeFile (listdir </> branch checklist) $ show $ todos checklist
+    if null output
+        then removeFile (listdir </> branch checklist) `catch`
+                (\(e :: IOError) -> putStrLn "Error cleaning up checklist file in .git/checklist/")
+        else writeFile (listdir </> branch checklist) (show output)
+                `catch` \(e :: IOException) -> putStrLn "Error writing checklist file."
 
 getChecklist :: String -> IO Checklist
 getChecklist branch = do
