@@ -2,7 +2,7 @@
 
 I was juggling lots of private git branches at work and making some use
 of the `BRANCH_DESCRIPTION` file (see `git branch --edit-description`)
-to store my notes for each branch. I soon realise what I wanted was to
+to store my notes for each branch. I soon realised what I wanted was to
 just store my TODOs in each branch and mark them off as I went.
 
 And so was born `git-checklist`, though in actual fact I've aliased it
@@ -24,7 +24,7 @@ Well, if you've not got anything to do yet, it won't have anything to
 show you. Find out where to go next:
 
     $ git todo --help
-    Usage: git-checklist ([ARG] | [COMMAND])
+    Usage: git-checklist [COMMAND]
       Per-branch TODO list for Git repositories
 
     Available options:
