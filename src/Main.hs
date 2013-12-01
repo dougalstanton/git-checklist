@@ -2,6 +2,7 @@ module Main where
 
 import Control.Applicative
 import Control.Exception
+import Control.Monad (when)
 
 import Data.Monoid
 
@@ -36,13 +37,12 @@ data Checklist = Checklist { branch :: String
 
 -- Loading and saving data (by cheating).
 
-putChecklist :: Checklist -> IO Checklist
+putChecklist :: Checklist -> IO ()
 putChecklist checklist = do
     root <- getGitDir
     let listdir = root </> "checklist"
     createDirectoryIfMissing False listdir
     writeFile (listdir </> branch checklist) $ show $ todos checklist
-    return checklist
 
 getChecklist :: String -> IO Checklist
 getChecklist branch = do
@@ -55,22 +55,21 @@ getChecklist branch = do
 
 -- Operations: Adding, removing, marking done and not done.
 
-add :: String -> Checklist -> Checklist
-add desc (Checklist b ts) = Checklist b (ToDo desc False:ts)
+run :: Action -> Checklist -> Checklist
+run (Add desc) (Checklist b ts) = Checklist b (ToDo desc False:ts)
+run (Remove n) (Checklist b ts) = let del = map snd . filter (\i -> n /= fst i)
+                                  in Checklist b (del `withNumbered` ts)
+run (Done   n) (Checklist b ts) = Checklist b (mark True n `withNumbered` ts)
+run (Undo   n) (Checklist b ts) = Checklist b (mark False n `withNumbered` ts)
+run Show       c                = c
 
-remove :: Int -> Checklist -> Checklist
-remove n (Checklist b ts) = Checklist b (del n ts)
+withNumbered :: ([(Int,a)] -> [a]) -> [a] -> [a]
+f `withNumbered` as = f $ zip [1..] as
 
-done n (Checklist b ts) = Checklist b (mark True n ts)
-undo n (Checklist b ts) = Checklist b (mark False n ts)
-
-del :: Int -> [ToDo] -> [ToDo]
-del n = map snd . filter (\(i,_) -> i/=n) . zip [1..]
-
-mark :: Bool -> Int -> [ToDo] -> [ToDo]
-mark v n = zipWith f [1..]
-    where f i t | i == n    = t { complete = v }
-                | otherwise = t
+mark :: Bool -> Int -> [(Int,ToDo)] -> [ToDo]
+mark v n its = map f its
+    where f (i,t) | i == n    = t { complete = v }
+                  | otherwise = t
 
 -- Pretty printing! Not very pretty for >9 items.
 
@@ -87,34 +86,25 @@ printChecklist = putStr . unlines . prettyChecklist
 
 -- 
 
-printKey checklist = if length (todos checklist) == 0
-                        then putStrLn "key: add <description>"
-                        else putStrLn "key: add <description> | done <n> | undo <n> | del <n>"
-
-modifyChecklist f branch = do
+modifyChecklist act branch = do
     checklist <- getChecklist branch
-    printKey checklist
-    let newlist = f checklist
-    if newlist == checklist
-        then return newlist
-        else putChecklist newlist
+    let newlist = run act checklist
+    when (newlist /= checklist) (putChecklist newlist)
+    printChecklist newlist
 
-usingArgs :: ([String] -> Checklist -> Checklist) -> [String] -> IO ()
-usingArgs _ []   = return ()
-usingArgs f args = do
-    let (altbranch,unused) = case args of
-                            ("-b":b:r)       -> (Just b, r)
-                            ("--branch":b:r) -> (Just b, r)
-                            _                -> (Nothing,args)
-    branch <- maybe getBranch return altbranch
-    modifyChecklist (f unused) branch >>= printChecklist
+usingArgs :: Option -> IO ()
+usingArgs opts = do
+    branch <- maybe getBranch return $ branchName $ commonOpt opts
+    modifyChecklist (actionOpt opts) branch
 
-data Option = Option Common Action deriving Show
+data Option = Option { commonOpt :: Common
+                     , actionOpt :: Action
+                     } deriving Show
 
-data Common = Common (Maybe String) deriving Show
+data Common = Common { branchName :: (Maybe String) } deriving Show
 instance Monoid Common where
     mempty = Common Nothing
-    (Common l) `mappend` (Common r) = Common (l <> r)
+    (Common l) `mappend` (Common r) = Common $ getFirst (First l <> First r)
 
 common :: Parser Common
 common = Common <$> branchname
@@ -126,33 +116,24 @@ option :: Parser Option
 option = subparser $ mconcat
             [ command "show" (info (Option <$> common <*> pure Show)
                                    (progDesc "Show current TODOs"))
-            , command "add" (info (Option <$> common <*> addParser)
+            , command "add" (info (Option <$> common <*> add)
                                   (progDesc "Add a TODO"))
-            , command "remove" (info (Option <$> common <*> remParser)
-                                     (progDesc "Remove a TODO: Warning!"))
-            , command "done" (info (Option <$> common <*> doneParser)
+            , command "done" (info (Option <$> common <*> done)
                                    (progDesc "Mark a TODO as done."))
-            , command "undo" (info (Option <$> common <*> undoParser)
+            , command "undo" (info (Option <$> common <*> undo)
                                    (progDesc "Item needs redone!"))
-            ] -- <|> nullOption (value (Option mempty Show))
-    where addParser = Add . unwords <$> arguments str (metavar "DESCRIPTION")
-          remParser = Remove <$> argument auto (metavar "N")
-          doneParser= Done <$> argument auto (metavar "N")
-          undoParser= Undo <$> argument auto (metavar "N")
+            , command "remove" (info (Option <$> common <*> remove)
+                                     (progDesc "Remove a TODO (can't be undone)"))
+            ]
+    where add    = Add . unwords <$> arguments str (metavar "DESCRIPTION")
+          remove = Remove <$> argument auto (metavar "N")
+          done   = Done <$> argument auto (metavar "N")
+          undo   = Undo <$> argument auto (metavar "N")
 
 blank :: Parser Option
 blank = nullOption (value (Option mempty Show))
 
-argParser = info (blank <|> Main.option)
+argParser = info (helper <*> (blank <|> Main.option))
                     (progDesc "Per-branch TODO list for Git repositories")
 
-main = do
-    args <- getArgs
-    case args of
-        []            -> getBranch >>= getChecklist >>= \c -> printKey c >> printChecklist c
-        ("show":rest) -> const id `usingArgs` rest
-        ("add":rest)  -> (add . unwords) `usingArgs` rest
-        ("del":rest)  -> (remove . read . head) `usingArgs` rest
-        ("done":rest) -> (done . read . head) `usingArgs` rest
-        ("undo":rest) -> (undo . read . head) `usingArgs` rest
-        _             -> putStrLn "Not implemented yet."
+main = execParser argParser >>= usingArgs
