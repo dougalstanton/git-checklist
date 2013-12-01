@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                git-checklist
-version:             0.2.1.0
+version:             0.2.2.0
 synopsis:            Maintain per-branch checklist in Git
 -- description:         
 license:             BSD3
