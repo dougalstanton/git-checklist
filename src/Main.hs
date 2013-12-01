@@ -96,7 +96,7 @@ printStats (Checklist br ts)= putStrLn $ br ++ ": " ++ pending ++ " task to do (
     where pending = show $ length $ filter (not . complete) ts
           total    = show $ length ts
 
--- 
+--
 
 modifyChecklist act branch = do
     checklist <- getChecklist branch
@@ -111,24 +111,19 @@ usingArgs opts = do
     branch <- maybe getBranch return $ branchName $ commonOpt opts
     modifyChecklist (actionOpt opts) branch
 
+-- Define command line flags and options
+
 data Option = Option { commonOpt :: Common
                      , actionOpt :: Action
                      } deriving Show
 
 data Common = Common { branchName :: (Maybe String) } deriving Show
-instance Monoid Common where
-    mempty = Common Nothing
-    (Common l) `mappend` (Common r) = Common $ getFirst (First l <> First r)
-
-common :: Parser Common
-common = Common <$> branchname
-    where branchname = optional $ strOption (long "branch" <> short 'b' <> metavar "BRANCH")
 
 data Action = Show | Stats | Add String | Remove Int | Done Int | Undo Int
                 deriving (Eq, Show)
 
-option :: Parser Option
-option = subparser $ mconcat
+cli :: Parser Option
+cli = subparser $ mconcat
             [ command "show" (info (Option <$> common <*> pure Show)
                                    (progDesc "Show current TODOs"))
             , command "add" (info (Option <$> common <*> add)
@@ -139,19 +134,21 @@ option = subparser $ mconcat
                                    (progDesc "Item needs redone!"))
             , command "remove" (info (Option <$> common <*> remove)
                                      (progDesc "Remove a TODO (can't be undone)"))
-            , command "stats" (info (Option <$> common <*> stats)
+            , command "stats" (info (Option <$> common <*> pure Stats)
                                     (progDesc "Summary statistics of checklist"))
             ]
     where add    = Add . unwords <$> arguments str (metavar "DESCRIPTION")
           remove = Remove <$> argument auto (metavar "N")
           done   = Done <$> argument auto (metavar "N")
           undo   = Undo <$> argument auto (metavar "N")
-          stats  = pure Stats
 
-blank :: Parser Option
-blank = nullOption (value (Option mempty Show))
+          common = Common <$> (optional $ strOption (long "branch" <> short 'b'
+                                                     <> metavar "BRANCH"))
 
-argParser = info (helper <*> (blank <|> Main.option))
+argParser :: ParserInfo Option
+argParser = info (helper <*> (blank <|> cli))
                     (progDesc "Per-branch TODO list for Git repositories")
+    where blank :: Parser Option -- user enters no arguments
+          blank = nullOption (value (Option (Common Nothing) Show))
 
 main = execParser argParser >>= usingArgs
