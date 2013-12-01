@@ -149,6 +149,6 @@ argParser :: ParserInfo Option
 argParser = info (helper <*> (blank <|> cli))
                     (progDesc "Per-branch TODO list for Git repositories")
     where blank :: Parser Option -- user enters no arguments
-          blank = nullOption (value (Option (Common Nothing) Show))
+          blank = nullOption (value (Option (Common Nothing) Show) <> internal)
 
 main = execParser argParser >>= usingArgs
