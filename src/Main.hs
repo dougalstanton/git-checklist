@@ -2,7 +2,7 @@
 module Main where
 
 import Control.Exception (IOException, catch)
-import Control.Monad (when)
+import Control.Monad (when, mapM_)
 
 import Data.Monoid (mconcat)
 
@@ -10,7 +10,7 @@ import Options.Applicative
 
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
-import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
+import System.Directory (createDirectoryIfMissing, doesFileExist, getDirectoryContents, removeFile)
 import System.Process (readProcess)
 
 -- Git stuff. Find the branch we're on and the .git directory.
@@ -24,6 +24,12 @@ git args = lines <$> readProcess "git" (words args) []
 getBranch, getGitDir :: IO String
 getBranch = head <$> git "symbolic-ref --short HEAD"
 getGitDir = head <$> git "rev-parse --show-cdup" >>= \move -> return $ move ++ ".git"
+
+listBranches :: IO [String]
+listBranches = do
+    root <- getGitDir
+    filter (`notElem` [".",".."]) <$> getDirectoryContents (root </> "checklist")
+        `catch` \(_ :: IOException) -> return []
 
 -- Data structures!
 
@@ -85,7 +91,7 @@ view Stats (Checklist br ts) = br ++ ": " ++ tasksToDo ++ totalTasks
                             0 -> "Nothing to do! ("
                             1 -> "1 task left! ("
                             n -> show n ++ " tasks to do ("
-          totalTasks = show (length ts) ++ " in total)"
+          totalTasks = show (length ts) ++ " in total)\n"
 
 prettyTodo :: ToDo -> String
 prettyTodo t = xmark ++ description t
@@ -109,8 +115,10 @@ withBranch (Right act) branch = do
     putStr (view List newlist)
 
 usingArgs :: Option -> IO ()
-usingArgs (Option (Common Nothing)       act) = getBranch >>= withBranch act
-usingArgs (Option (Common (Just branch)) act) = withBranch act branch
+usingArgs (Option (Common Head)      act) = getBranch >>= withBranch act
+usingArgs (Option (Common (Named b)) act) = withBranch act b
+usingArgs (Option (Common All)  (Left a)) = listBranches >>= mapM_ (withBranch (Left a))
+usingArgs (Option (Common All) (Right _)) = putStrLn "Can't edit all branches simultaneously!"
 
 -- Define command line flags and options
 
@@ -118,24 +126,25 @@ data Option = Option { commonOpt :: Common
                      , actionOpt :: Either Observe Act
                      } deriving Show
 
-data Common = Common { branchName :: (Maybe String) } deriving Show
+data Common = Common Location deriving Show
 
+data Location = Head | Named String | All deriving Show
 data Observe = List | Stats deriving Show
 data Act = Add String | Remove Int | Done Int | Undo Int deriving Show
 
 cli :: Parser Option
 cli = subparser $ mconcat
-            [ command "show" (info (Option <$> common <*> showlist)
+            [ command "show" (info (Option <$> common False <*> showlist)
                                    (progDesc "Show current TODOs"))
-            , command "add" (info (Option <$> common <*> add)
+            , command "add" (info (Option <$> common True <*> add)
                                   (progDesc "Add a TODO"))
-            , command "done" (info (Option <$> common <*> done)
+            , command "done" (info (Option <$> common True <*> done)
                                    (progDesc "Mark a TODO as done."))
-            , command "undo" (info (Option <$> common <*> undo)
+            , command "undo" (info (Option <$> common True <*> undo)
                                    (progDesc "Item needs redone!"))
-            , command "remove" (info (Option <$> common <*> remove)
+            , command "remove" (info (Option <$> common True <*> remove)
                                      (progDesc "Remove a TODO (can't be undone)"))
-            , command "stats" (info (Option <$> common <*> showstat)
+            , command "stats" (info (Option <$> common False <*> showstat)
                                     (progDesc "Summary statistics of checklist"))
             ]
     where add    = Right . Add . unwords <$> arguments str (metavar "DESCRIPTION")
@@ -146,14 +155,20 @@ cli = subparser $ mconcat
           showlist = pure $ Left List
           showstat = pure $ Left Stats
 
-          common = Common <$> (optional $ strOption (long "branch" <> short 'b'
-                                                     <> metavar "BRANCH"))
+-- Some commands only valid on a single branch
+common :: Bool -> Parser Common
+common single = Common <$> if single then (onebranch <|> thisbranch)
+                             else (allbranches <|> onebranch <|> thisbranch)
+    where allbranches = flag' All (long "all" <> short 'a')
+          onebranch   = nullOption (reader (return . Named) <> long "branch"
+                                        <> short 'b' <> metavar "BRANCH")
+          thisbranch  = nullOption (value Head <> internal)
 
 argParser :: ParserInfo Option
 argParser = info (helper <*> (blank <|> cli))
                     (progDesc "Per-branch TODO list for Git repositories")
     where blank :: Parser Option -- user enters no arguments
-          blank = nullOption (value (Option (Common Nothing) (Left List)) <> internal)
+          blank = nullOption (value (Option (Common Head) (Left List)) <> internal)
 
 main :: IO ()
 main = execParser argParser >>= usingArgs
