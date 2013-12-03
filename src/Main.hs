@@ -2,8 +2,9 @@
 module Main where
 
 import Control.Exception (IOException, catch)
-import Control.Monad (when, mapM_)
+import Control.Monad (when)
 
+import Data.List (intersperse)
 import Data.Monoid (mconcat)
 
 import Options.Applicative
@@ -115,10 +116,12 @@ withBranch (Right act) branch = do
     putStr (view List newlist)
 
 usingArgs :: Option -> IO ()
-usingArgs (Option (Common Head)      act) = getBranch >>= withBranch act
-usingArgs (Option (Common (Named b)) act) = withBranch act b
-usingArgs (Option (Common All)  (Left a)) = listBranches >>= mapM_ (withBranch (Left a))
-usingArgs (Option (Common All) (Right _)) = putStrLn "Can't edit all branches simultaneously!"
+usingArgs (Option (Common Head)       act) = getBranch >>= withBranch act
+usingArgs (Option (Common (Named b))  act) = withBranch act b
+usingArgs (Option (Common All) a@(Left _)) = listBranches >>= separate . map withBranches
+    where withBranches b = putStrLn b >> withBranch a b
+          separate = sequence_ . intersperse (putStrLn "") -- blank line between branches only
+usingArgs (Option (Common All)         _)  = putStrLn "Can't edit all branches simultaneously!"
 
 -- Define command line flags and options
 
