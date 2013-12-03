@@ -85,14 +85,14 @@ mark v n its = map f its
 -- Pretty printing! Not very pretty for >9 items.
 
 view :: Observe -> Checklist -> String
-view List  checklist = unlines $ prettyChecklist checklist
-view Stats (Checklist br []) = br ++ ": No tasks defined yet"
-view Stats (Checklist br ts) = br ++ ": " ++ tasksToDo ++ totalTasks
+view List  checklist = concat $ intersperse "\n" $ prettyChecklist checklist
+view Stats (Checklist _ []) = "No tasks defined yet"
+view Stats (Checklist _ ts) = tasksToDo ++ totalTasks
     where tasksToDo  = case length $ filter (not . complete) ts of
-                            0 -> "Nothing to do! ("
-                            1 -> "1 task left! ("
-                            n -> show n ++ " tasks to do ("
-          totalTasks = show (length ts) ++ " in total)\n"
+                            0 -> "Nothing to do!"
+                            1 -> "1 task left!"
+                            n -> show n ++ " tasks to do"
+          totalTasks = " (" ++ show (length ts) ++ " in total)"
 
 prettyTodo :: ToDo -> String
 prettyTodo t = xmark ++ description t
@@ -107,7 +107,7 @@ prettyChecklist = zipWith f [1..] . map prettyTodo . todos
 -- Sometimes the checklist is Left alone and
 -- sometimes we Right on it...
 withBranch :: Either Observe Act -> String -> IO ()
-withBranch (Left act)  branch = getChecklist branch >>= putStr . view act
+withBranch (Left act)  branch = getChecklist branch >>= putStrLn . view act
 withBranch (Right act) branch = do
     oldlist <- getChecklist branch
     let newlist = change act oldlist
