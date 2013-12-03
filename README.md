@@ -1,9 +1,11 @@
 # Git Checklist
 
 I was juggling lots of private git branches at work and making some use
-of the `BRANCH_DESCRIPTION` file (see `git branch --edit-description`)
-to store my notes for each branch. I soon realised what I wanted was to
-just store my TODOs in each branch and mark them off as I went.
+of the branch description file (see `git branch --edit-description`)
+to store my notes for each branch. This was good for me because the
+descriptions aren't committed to the branch so they would never make it
+upstream (even by accident). However managing the TODOs themselves was
+pretty unwieldy.
 
 And so was born `git-checklist`, though in actual fact I've aliased it
 to `git todo`. Assuming it's in your path:
@@ -36,6 +38,7 @@ show you. Find out where to go next:
       done                     Mark a TODO as done.
       undo                     Item needs redone!
       remove                   Remove a TODO (can't be undone)
+      stats                    Summary statistics of checklist
 
 It will give you a summary of the commands you can enter at this point.
 There are no entries yet so all you can do is add them.
@@ -70,6 +73,37 @@ separate it from the rest of the command options with a double-hyphen on
 its own.
 
     $ git todo add -- -b stopped working but --branch still okay
+
+If you want to see all your branches at once use
+
+    $ git todo show --all
+
+Obviously you can't supply the `--all` flag to any of the editing
+commands --- you can only edit one branch's checklist at a time.
+
+There is one more overview command that will take `--branch` or `--all`
+as an option:
+
+    $ git todo stats
+    2 tasks to do (4 in total)
+
+## Work In Progress Commits
+
+I've got an alias called `wip` which lets me quickly save all my unsaved
+work in the current branch. You can use this as a basic command:
+
+    $ git config alias.wip=commit -a -m"WIP"
+
+But if you use git-checklist the following might be more informative
+when you are trying to get the measure of your branches:
+
+    $ git config alias.wip=!git commit -a -m\""WIP $(git todo stats)"\"
+
+Then you'll get a commit that says something like _WIP 2 tasks to do (4
+in total_ which is much nicer. For the cherry on top I also use
+`prepare-commit-msg` to pipe the result of `git todo show` to the commit
+message. The summary line will contain a summary and the rest of the
+message will contain the current state of the branch.
 
 ## Background Details
 
