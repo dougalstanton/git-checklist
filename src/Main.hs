@@ -113,7 +113,7 @@ withBranch (Right act) branch = do
     let newlist = change act oldlist
     when (newlist /= oldlist)
          (putChecklist newlist)
-    putStr (view List newlist)
+    putStrLn (view List newlist)
 
 usingArgs :: Option -> IO ()
 usingArgs (Option (Common Head)       act) = getBranch >>= withBranch act
