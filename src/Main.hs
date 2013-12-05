@@ -125,9 +125,7 @@ usingArgs (Option (Common All)         _)  = putStrLn "Can't edit all branches s
 
 -- Define command line flags and options
 
-data Option = Option { commonOpt :: Common
-                     , actionOpt :: Either Observe Act
-                     } deriving Show
+data Option = Option Common (Either Observe Act) deriving Show
 
 data Common = Common Location deriving Show
 
