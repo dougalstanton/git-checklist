@@ -104,24 +104,30 @@ prettyChecklist = zipWith f [1..] . map prettyTodo . todos
 
 -- Overall control actions
 
--- Sometimes the checklist is Left alone and
--- sometimes we Right on it...
-withBranch :: Either Observe Act -> String -> IO ()
-withBranch (Left act)  branch = getChecklist branch >>= putStrLn . view act
-withBranch (Right act) branch = do
-    oldlist <- getChecklist branch
-    let newlist = change act oldlist
-    when (newlist /= oldlist)
-         (putChecklist newlist)
-    putStrLn (view List newlist)
+withOpts :: (Maybe Act, Observe) -> String -> IO ()
+withOpts (actor,observer) branch = getChecklist branch
+                                    >>= maybeChange
+                                    >>= putStrLn . view observer
+    where maybeChange oldlist = let newlist = (maybe id change actor) $ oldlist
+                                in do when (newlist /= oldlist)
+                                           (putChecklist newlist)
+                                      return newlist
 
 usingArgs :: Option -> IO ()
-usingArgs (Option (Common Head)       act) = getBranch >>= withBranch act
-usingArgs (Option (Common (Named b))  act) = withBranch act b
-usingArgs (Option (Common All) a@(Left _)) = listBranches >>= separate . map withBranches
-    where withBranches b = putStrLn b >> withBranch a b
-          separate = sequence_ . intersperse (putStrLn "") -- blank line between branches only
-usingArgs (Option (Common All)         _)  = putStrLn "Can't edit all branches simultaneously!"
+usingArgs (Option (Common loc) beh) = case loc of
+                                        Head    -> getBranch >>= withOpts (gather beh)
+                                        Named b -> withOpts (gather beh) b
+                                        All     -> either
+                                                    (\_ -> listBranches >>= viewAll)
+                                                    (\_ -> editErr)
+                                                    beh
+    where viewAll = sequence_ . sepBlocks . map printBlock
+          editErr = putStrLn "Can't edit all branches simultaneously"
+          sepBlocks = intersperse (putStrLn "")
+          printBlock branch = putStrLn branch >> withOpts (gather beh) branch
+
+          gather (Left observer) = (Nothing, observer)
+          gather (Right actor)   = (Just actor, List)
 
 -- Define command line flags and options
 
