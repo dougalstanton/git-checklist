@@ -4,7 +4,7 @@ module Main where
 import Control.Exception (IOException, catch)
 import Control.Monad (when)
 
-import Data.List (intersperse)
+import Data.List (intersperse, intercalate)
 import Data.Monoid (mconcat)
 
 import Options.Applicative
@@ -78,14 +78,14 @@ withNumbered :: ([(Int,a)] -> [a]) -> [a] -> [a]
 f `withNumbered` as = f $ zip [1..] as
 
 mark :: Bool -> Int -> [(Int,ToDo)] -> [ToDo]
-mark v n its = map f its
+mark v n = map f
     where f (i,t) | i == n    = t { complete = v }
                   | otherwise = t
 
 -- Pretty printing! Not very pretty for >9 items.
 
 view :: Observe -> Checklist -> String
-view List  checklist = concat $ intersperse "\n" $ prettyChecklist checklist
+view List  checklist = intercalate "\n" $ prettyChecklist checklist
 view Stats (Checklist _ []) = "No tasks defined yet"
 view Stats (Checklist _ ts) = tasksToDo ++ totalTasks
     where tasksToDo  = case length $ filter (not . complete) ts of
@@ -108,7 +108,7 @@ withOpts :: (Maybe Act, Observe) -> String -> IO ()
 withOpts (actor,observer) branch = getChecklist branch
                                     >>= maybeChange
                                     >>= putStrLn . view observer
-    where maybeChange oldlist = let newlist = (maybe id change actor) $ oldlist
+    where maybeChange oldlist = let newlist = maybe id change actor oldlist
                                 in do when (newlist /= oldlist)
                                            (putChecklist newlist)
                                       return newlist
@@ -164,8 +164,9 @@ cli = subparser $ mconcat
 
 -- Some commands only valid on a single branch
 common :: Bool -> Parser Common
-common single = Common <$> if single then (onebranch <|> thisbranch)
-                             else (allbranches <|> onebranch <|> thisbranch)
+common single = Common <$> if single
+                              then onebranch <|> thisbranch
+                              else onebranch <|> thisbranch <|> allbranches
     where allbranches = flag' All (long "all" <> short 'a')
           onebranch   = nullOption (reader (return . Named) <> long "branch"
                                         <> short 'b' <> metavar "BRANCH")
