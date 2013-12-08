@@ -16,6 +16,9 @@ import System.Process (readProcess)
 
 import Text.PrettyPrint hiding ((<>))
 
+import qualified Paths_git_checklist as V
+import Data.Version (showVersion)
+
 -- Git stuff. Find the branch we're on and the .git directory.
 
 git :: String -> IO [String]
@@ -173,10 +176,12 @@ common single = Common <$> if single
           thisbranch  = nullOption (value Head <> internal)
 
 argParser :: ParserInfo Option
-argParser = info (helper <*> (blank <|> cli))
+argParser = info (helper <*> version <*> (blank <|> cli))
                     (progDesc "Per-branch TODO list for Git repositories")
     where blank :: Parser Option -- user enters no arguments
           blank = nullOption (value (Option (Common Head) (Left List)) <> internal)
+          version = flip abortOption (long "version" <> short 'v' <> help "Show version")
+                        (InfoMsg $ "git-checklist v" ++ showVersion V.version)
 
 main :: IO ()
 main = execParser argParser >>= usingArgs
