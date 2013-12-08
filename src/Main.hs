@@ -14,6 +14,8 @@ import System.FilePath ((</>))
 import System.Directory (createDirectoryIfMissing, doesFileExist, getDirectoryContents, removeFile)
 import System.Process (readProcess)
 
+import Text.PrettyPrint hiding ((<>))
+
 -- Git stuff. Find the branch we're on and the .git directory.
 
 git :: String -> IO [String]
@@ -82,52 +84,50 @@ mark v n = map f
     where f (i,t) | i == n    = t { complete = v }
                   | otherwise = t
 
--- Pretty printing! Not very pretty for >9 items.
+-- Pretty printing! Copes with up to 99 items :-)
 
-view :: Observe -> Checklist -> String
-view List  checklist = intercalate "\n" $ prettyChecklist checklist
-view Stats (Checklist _ []) = "No tasks defined yet"
-view Stats (Checklist _ ts) = tasksToDo ++ totalTasks
+view :: Observe -> Checklist -> Doc
+view List  checklist = prettyChecklist checklist
+view Stats (Checklist _ []) = text "No tasks defined yet"
+view Stats (Checklist _ ts) = tasksToDo <+> parens (int (length ts) <+> text "in total")
     where tasksToDo  = case length $ filter (not . complete) ts of
-                            0 -> "Nothing to do!"
-                            1 -> "1 task left!"
-                            n -> show n ++ " tasks to do"
-          totalTasks = " (" ++ show (length ts) ++ " in total)"
+                            0 -> text "Nothing to do!"
+                            1 -> text "1 task left!"
+                            n -> int n <+> text "tasks to do"
 
-prettyTodo :: ToDo -> String
-prettyTodo t = xmark ++ description t
-    where xmark = if complete t then "[x] " else "[ ] "
+prettyTodo :: ToDo -> Doc
+prettyTodo t = brackets xmark <+> text (description t)
+    where xmark = if complete t then char 'x' else space
 
-prettyChecklist :: Checklist -> [String]
-prettyChecklist = zipWith f [1..] . map prettyTodo . todos
-    where f i desc = show i ++ ": " ++ desc
+prettyChecklist :: Checklist -> Doc
+prettyChecklist = vcat . zipWith rightAlign [1..] . map prettyTodo . todos
+    where rightAlign i doc = nest (shiftInt i) $ hcat [int i, colon, space, doc]
+          shiftInt n = if n < 10 then 1 else 0 -- Over 100 TODOs is silly.
 
 -- Overall control actions
 
-withOpts :: (Maybe Act, Observe) -> String -> IO ()
-withOpts (actor,observer) branch = getChecklist branch
-                                    >>= maybeChange
-                                    >>= putStrLn . view observer
-    where maybeChange oldlist = let newlist = maybe id change actor oldlist
-                                in do when (newlist /= oldlist)
-                                           (putChecklist newlist)
-                                      return newlist
+updateWith :: Maybe Act -> [Checklist] -> IO [Checklist]
+updateWith (Just a) [c]= let c' = change a c
+                         in when (c' /= c) (putChecklist c') >> return [c']
+updateWith _        cs = return cs
+
+viewWith :: Observe -> [Checklist] -> Doc
+viewWith o []  = Text.PrettyPrint.empty
+viewWith o [c] = view o c
+viewWith o cs  = vcat $ vsep $ map (\c -> text (branchRef c) $+$ view o c) cs
+    where vsep = punctuate (char '\n') -- join list with blank lines
 
 usingArgs :: Option -> IO ()
-usingArgs (Option (Common loc) beh) = case loc of
-                                        Head    -> getBranch >>= withOpts (gather beh)
-                                        Named b -> withOpts (gather beh) b
-                                        All     -> either
-                                                    (\_ -> listBranches >>= viewAll)
-                                                    (\_ -> editErr)
-                                                    beh
-    where viewAll = sequence_ . sepBlocks . map printBlock
-          editErr = putStrLn "Can't edit all branches simultaneously"
-          sepBlocks = intersperse (putStrLn "")
-          printBlock branch = putStrLn branch >> withOpts (gather beh) branch
+usingArgs (Option (Common loc) behaviour) = loc2checklist loc >>=
+                                            updateWith actOpts >>=
+                                            print . viewWith viewOpts
+    where viewOpts = either id (const List) behaviour
+          actOpts  = either (const Nothing) Just behaviour
 
-          gather (Left observer) = (Nothing, observer)
-          gather (Right actor)   = (Just actor, List)
+          loc2checklist :: Location -> IO [Checklist]
+          loc2checklist All       = listBranches >>= mapM getChecklist
+          loc2checklist Head      = getBranch >>= getChecklist >>= \c -> return [c]
+          loc2checklist (Named b) = mapM getChecklist [b]
 
 -- Define command line flags and options
 
