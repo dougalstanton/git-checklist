@@ -144,10 +144,12 @@ error messages on failure are poor and the storage format could be
 better too. In future I'd like to use a line-oriented format which is
 easier to edit manually if necessary.
 
-If you have any more than 9 items in a list the pretty printing will no
-longer look as pretty because only 1 character is allowed for the
-numbers. Any more than that and the checkboxes no longer line up --- not
-pretty!
-
 It doesn't cope very well with not being somewhere inside a repository.
 It shouldn't wreck anything but the error message isn't very refined.
+
+## Future Changes
+
+The next step will be to decide on a proper storage format so I can
+write a parser and pretty printer for it. I imagine that will involve
+making a conversion routine to upgrade any existing todo lists. Not
+least of all my own todo lists!
