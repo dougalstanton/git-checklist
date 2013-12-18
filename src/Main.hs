@@ -14,7 +14,8 @@ import System.FilePath ((</>))
 import System.Directory (createDirectoryIfMissing, doesFileExist, getDirectoryContents, removeFile)
 import System.Process (readProcess)
 
-import Text.PrettyPrint hiding ((<>))
+import Text.PrettyPrint hiding ((<>), empty)
+import qualified Text.PrettyPrint as P
 
 import qualified Paths_git_checklist as V
 import Data.Version (showVersion)
@@ -115,7 +116,7 @@ updateWith (Just a) [c]= let c' = change a c
 updateWith _        cs = return cs
 
 viewWith :: Observe -> [Checklist] -> Doc
-viewWith o []  = Text.PrettyPrint.empty
+viewWith o []  = P.empty
 viewWith o [c] = view o c
 viewWith o cs  = vcat $ vsep $ map (\c -> text (branchRef c) $+$ view o c) cs
     where vsep = punctuate (char '\n') -- join list with blank lines
