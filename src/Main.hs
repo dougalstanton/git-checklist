@@ -110,10 +110,9 @@ prettyChecklist = vcat . zipWith rightAlign [1..] . map prettyTodo . todos
 
 -- Overall control actions
 
-updateWith :: Maybe Act -> [Checklist] -> IO [Checklist]
-updateWith (Just a) [c]= let c' = change a c
-                         in when (c' /= c) (putChecklist c') >> return [c']
-updateWith _        cs = return cs
+updateWith :: Act -> [Checklist] -> IO [Checklist]
+updateWith a [c] = let c' = change a c
+                   in when (c' /= c) (putChecklist c') >> return [c']
 
 viewWith :: Observe -> [Checklist] -> Doc
 viewWith o []  = P.empty
@@ -122,16 +121,17 @@ viewWith o cs  = vcat $ vsep $ map (\c -> text (branchRef c) $+$ view o c) cs
     where vsep = punctuate (char '\n') -- join list with blank lines
 
 usingArgs :: Option -> IO ()
-usingArgs (Option loc behaviour) = loc2checklist loc >>=
-                                   updateWith actOpts >>=
-                                   print . viewWith viewOpts
-    where viewOpts = either id (const List) behaviour
-          actOpts  = either (const Nothing) Just behaviour
+usingArgs (Option loc behaviour) = loc2checklist loc >>= operation
+    where
+    operation :: [Checklist] -> IO ()
+    operation = either (\o cs -> print (viewWith o cs))
+                       (\a cs -> updateWith a cs >>= print . viewWith List)
+                       behaviour
 
-          loc2checklist :: Location -> IO [Checklist]
-          loc2checklist All       = listBranches >>= mapM getChecklist
-          loc2checklist Head      = getBranch >>= getChecklist >>= \c -> return [c]
-          loc2checklist (Named b) = mapM getChecklist [b]
+    loc2checklist :: Location -> IO [Checklist]
+    loc2checklist All       = listBranches >>= mapM getChecklist
+    loc2checklist Head      = getBranch >>= getChecklist >>= \c -> return [c]
+    loc2checklist (Named b) = mapM getChecklist [b]
 
 -- Define command line flags and options
 
