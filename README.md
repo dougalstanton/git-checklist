@@ -107,10 +107,19 @@ message will contain the current state of the branch.
 
 ## Background Details
 
-The checklists are stored in `.git/checklist/<branchname>` in a
-serialised form of the internal data structure called `ToDo`. If you
-open up one of these files it's easy to edit though you might find
-breakage occurs!
+The checklists are stored in `.git/checklist/<branchname>`. The
+serialised form is basically just the checklists without the number
+prefix. This is similar to the checklist format used by GitHub's
+extended Markdown, so you can re-use the file contents if desired.
+
+The format is very easy to read and edit manually.
+
+    [ <mark> ] <space> <description> <newline>
+
+The _<mark>_ is either "x" for a completed item or a space otherwise.
+(The parser will accept any non-"x" as pending but will always write a
+space.) The description must not contain a newline but is otherwise
+freeform.
 
 The checklist for the working directory is whatever branch name is
 pointed to by `HEAD`. I have not tested it with a detached head, though I
@@ -138,12 +147,6 @@ based around a single computer.
 
 The read/write step bashes into the awkwardness of lazy IO.
 
-The serialisation is quick-and-dirty using Haskell's `deriving
-(Read,Show)` functionality which means not only is it brittle but the
-error messages on failure are poor and the storage format could be
-better too. In future I'd like to use a line-oriented format which is
-easier to edit manually if necessary.
-
 If you have any more than 9 items in a list the pretty printing will no
 longer look as pretty because only 1 character is allowed for the
 numbers. Any more than that and the checkboxes no longer line up --- not
@@ -151,3 +154,8 @@ pretty!
 
 It doesn't cope very well with not being somewhere inside a repository.
 It shouldn't wreck anything but the error message isn't very refined.
+
+If you were using a pre-1.0 version the file format has changed
+incompatibly. There is a secret flag to upgrade:
+
+    $ git-checklist --upgrade

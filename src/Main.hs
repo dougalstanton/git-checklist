@@ -8,7 +8,10 @@ import Data.List (intersperse)
 import Data.Monoid (mconcat)
 
 import Options.Applicative
+import qualified Text.Parsec as P
+import qualified Text.Parsec.String
 
+import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.Directory (createDirectoryIfMissing, doesFileExist, getDirectoryContents, removeFile)
@@ -53,7 +56,7 @@ putChecklist checklist = do
     if null output
         then removeFile (listdir </> branchRef checklist) `catch`
                 (\(_ :: IOError) -> putStrLn "Error cleaning up checklist file in .git/checklist/")
-        else writeFile (listdir </> branchRef checklist) (show output)
+        else writeFile (listdir </> branchRef checklist) (printChecklist checklist)
                 `catch` \(_ :: IOException) -> putStrLn "Error writing checklist file."
 
 getChecklist :: String -> IO Checklist
@@ -62,8 +65,42 @@ getChecklist branch = do
     let path = root </> "checklist" </> branch
     exists <- doesFileExist path
     if exists
-        then Checklist branch . read <$> readFile path
+        then do contents <- readFile path
+                case P.parse parseChecklist path contents of
+                    Left err -> error $ show err
+                    Right todolist -> return $ Checklist branch todolist
         else return (Checklist branch [])
+
+
+-- TODO
+-- quickcheck property: roundtrip
+--   parseChecklist . printChecklist (Checklist _ x) == x
+
+parseChecklist :: P.Parsec String () [ToDo]
+parseChecklist = parseTodo `P.sepEndBy` P.newline
+    where checkmark = P.char '[' *> P.anyChar <* P.char ']' <* P.space
+          remaining = P.many1 (P.noneOf "\n")
+          parseTodo = do done <- ('x'==) <$> checkmark
+                         what <- remaining
+                         return $ ToDo { description = what, complete = done }
+
+printChecklist :: Checklist -> String
+printChecklist = unlines . map prettyTodo . todos
+
+upgradeFileFormat :: IO ()
+upgradeFileFormat = do
+    branchNames <- listBranches
+    putStrLn $ "Processing " ++ (show (length branchNames)) ++ " files..."
+    mapM_ upgradeOldFormat branchNames
+  where
+    upgradeOldFormat branch = do
+        root <- getGitDir
+        let path = root </> "checklist" </> branch
+        exists <- doesFileExist path
+        if exists
+            then do contents <- readFile path
+                    putChecklist $ Checklist branch $ read contents
+            else putStrLn $ "Failed reading branch " ++ branch
 
 -- Operations: Adding, removing, marking done and not done.
 
@@ -174,4 +211,8 @@ argParser = info (helper <*> (blank <|> cli))
           blank = nullOption (value (Option (Common Head) (Left List)) <> internal)
 
 main :: IO ()
-main = execParser argParser >>= usingArgs
+main = do
+    args <- getArgs
+    case args of
+        ["--upgrade"] -> upgradeFileFormat --secret option
+        _             -> execParser argParser >>= usingArgs
