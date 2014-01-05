@@ -3,16 +3,28 @@
 
 name:                git-checklist
 version:             1.0.0.0
-synopsis:            Maintain per-branch checklist in Git
--- description:         
-license:             BSD3
+
+synopsis:            Maintain per-branch checklists in Git
+description:         Manage lists of TODO items for private branches
+                     from the command line. No configuration required
+                     and fast to learn, with human-editable storage
+                     format and comprehensive help information.
+license:             GPL
+license-file:        LICENSE
+
 author:              Dougal Stanton
 maintainer:          dougal@dougalstanton.net
--- copyright:           
--- category:            
+homepage:            https://github.com/dougalstanton/git-checklist
+bug-reports:         https://github.com/dougalstanton/git-checklist/issues
+
+category:            Desktop, Development
 build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
+
+source-repository head
+    type:       git
+    location:   https://github.com/dougalstanton/git-checklist
 
 executable git-checklist
   main-is:             Main.hs
