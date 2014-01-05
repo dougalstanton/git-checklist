@@ -150,7 +150,18 @@ The read/write step bashes into the awkwardness of lazy IO.
 It doesn't cope very well with not being somewhere inside a repository.
 It shouldn't wreck anything but the error message isn't very refined.
 
+## Upgrading
+
 If you were using a pre-1.0 version the file format has changed
 incompatibly. There is a secret flag to upgrade:
 
     $ git-checklist --upgrade
+
+Alternatively you can do it manually *before you upgrade the
+application* like this. The key part is to strip the first four
+characters from each line, ie the number--colon--space prefix.
+
+    for b in .git/checklist/* ; do
+        git-checklist show --branch $(basename $b) | cut -c 5- > $b
+    done
+
