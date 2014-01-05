@@ -147,11 +147,6 @@ based around a single computer.
 
 The read/write step bashes into the awkwardness of lazy IO.
 
-If you have any more than 9 items in a list the pretty printing will no
-longer look as pretty because only 1 character is allowed for the
-numbers. Any more than that and the checkboxes no longer line up --- not
-pretty!
-
 It doesn't cope very well with not being somewhere inside a repository.
 It shouldn't wreck anything but the error message isn't very refined.
 

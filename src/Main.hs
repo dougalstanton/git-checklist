@@ -4,7 +4,7 @@ module Main where
 import Control.Exception (IOException, catch)
 import Control.Monad (when)
 
-import Data.List (intersperse)
+import Data.List (intersperse, intercalate)
 import Data.Monoid (mconcat)
 
 import Options.Applicative
@@ -16,6 +16,12 @@ import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.Directory (createDirectoryIfMissing, doesFileExist, getDirectoryContents, removeFile)
 import System.Process (readProcess)
+
+import Text.PrettyPrint hiding ((<>), empty)
+import qualified Text.PrettyPrint as Pretty
+
+import qualified Paths_git_checklist as V
+import Data.Version (showVersion)
 
 -- Git stuff. Find the branch we're on and the .git directory.
 
@@ -85,7 +91,8 @@ parseChecklist = parseTodo `P.sepEndBy` P.newline
                          return $ ToDo { description = what, complete = done }
 
 printChecklist :: Checklist -> String
-printChecklist = unlines . map prettyTodo . todos
+printChecklist = renderStyle noBreaks . vcat . map prettyTodo . todos
+    where noBreaks = style { mode = LeftMode }
 
 upgradeFileFormat :: IO ()
 upgradeFileFormat = do
@@ -115,100 +122,107 @@ withNumbered :: ([(Int,a)] -> [a]) -> [a] -> [a]
 f `withNumbered` as = f $ zip [1..] as
 
 mark :: Bool -> Int -> [(Int,ToDo)] -> [ToDo]
-mark v n its = map f its
+mark v n = map f
     where f (i,t) | i == n    = t { complete = v }
                   | otherwise = t
 
--- Pretty printing! Not very pretty for >9 items.
+-- Pretty printing! Copes with up to 99 items :-)
 
-view :: Observe -> Checklist -> String
-view List  checklist = concat $ intersperse "\n" $ prettyChecklist checklist
-view Stats (Checklist _ []) = "No tasks defined yet"
-view Stats (Checklist _ ts) = tasksToDo ++ totalTasks
+view :: Observe -> Checklist -> Doc
+view List  checklist = prettyChecklist checklist
+view Stats (Checklist _ []) = text "No tasks defined yet"
+view Stats (Checklist _ ts) = tasksToDo <+> parens (int (length ts) <+> text "in total")
     where tasksToDo  = case length $ filter (not . complete) ts of
-                            0 -> "Nothing to do!"
-                            1 -> "1 task left!"
-                            n -> show n ++ " tasks to do"
-          totalTasks = " (" ++ show (length ts) ++ " in total)"
+                            0 -> text "Nothing to do!"
+                            1 -> text "1 task left!"
+                            n -> int n <+> text "tasks to do"
 
-prettyTodo :: ToDo -> String
-prettyTodo t = xmark ++ description t
-    where xmark = if complete t then "[x] " else "[ ] "
+prettyTodo :: ToDo -> Doc
+prettyTodo t = brackets xmark <+> text (description t)
+    where xmark = if complete t then char 'x' else space
 
-prettyChecklist :: Checklist -> [String]
-prettyChecklist = zipWith f [1..] . map prettyTodo . todos
-    where f i desc = show i ++ ": " ++ desc
+prettyChecklist :: Checklist -> Doc
+prettyChecklist = vcat . zipWith rightAlign [1..] . map prettyTodo . todos
+    where rightAlign i doc = nest (shiftInt i) $ hcat [int i, colon, space, doc]
+          shiftInt n = if n < 10 then 1 else 0 -- Over 100 TODOs is silly.
 
 -- Overall control actions
 
--- Sometimes the checklist is Left alone and
--- sometimes we Right on it...
-withBranch :: Either Observe Act -> String -> IO ()
-withBranch (Left act)  branch = getChecklist branch >>= putStrLn . view act
-withBranch (Right act) branch = do
-    oldlist <- getChecklist branch
-    let newlist = change act oldlist
-    when (newlist /= oldlist)
-         (putChecklist newlist)
-    putStr (view List newlist)
+updateWith :: Act -> [Checklist] -> IO [Checklist]
+updateWith a [c] = let c' = change a c
+                   in when (c' /= c) (putChecklist c') >> return [c']
+
+viewWith :: Observe -> [Checklist] -> Doc
+viewWith o []  = Pretty.empty
+viewWith o [c] = view o c
+viewWith o cs  = vcat $ vsep $ map (\c -> text (branchRef c) $+$ view o c) cs
+    where vsep = punctuate (char '\n') -- join list with blank lines
 
 usingArgs :: Option -> IO ()
-usingArgs (Option (Common Head)       act) = getBranch >>= withBranch act
-usingArgs (Option (Common (Named b))  act) = withBranch act b
-usingArgs (Option (Common All) a@(Left _)) = listBranches >>= separate . map withBranches
-    where withBranches b = putStrLn b >> withBranch a b
-          separate = sequence_ . intersperse (putStrLn "") -- blank line between branches only
-usingArgs (Option (Common All)         _)  = putStrLn "Can't edit all branches simultaneously!"
+usingArgs (Option loc behaviour) = loc2checklist loc >>= operation
+    where
+    operation :: [Checklist] -> IO ()
+    operation = either (\o cs -> print (viewWith o cs))
+                       (\a cs -> updateWith a cs >>= print . viewWith List)
+                       behaviour
+
+    loc2checklist :: Location -> IO [Checklist]
+    loc2checklist All       = listBranches >>= mapM getChecklist
+    loc2checklist Head      = getBranch >>= getChecklist >>= \c -> return [c]
+    loc2checklist (Named b) = mapM getChecklist [b]
 
 -- Define command line flags and options
 
-data Option = Option { commonOpt :: Common
-                     , actionOpt :: Either Observe Act
-                     } deriving Show
-
-data Common = Common Location deriving Show
+data Option = Option Location (Either Observe Act) deriving Show
 
 data Location = Head | Named String | All deriving Show
 data Observe = List | Stats deriving Show
 data Act = Add String | Remove Int | Done Int | Undo Int deriving Show
 
-cli :: Parser Option
-cli = subparser $ mconcat
-            [ command "show" (info (Option <$> common False <*> showlist)
-                                   (progDesc "Show current TODOs"))
-            , command "add" (info (Option <$> common True <*> add)
+cli_observers :: Mod CommandFields Option
+cli_observers =
+  command "show"
+    (info (Option <$> common <*> show_list)
+          (progDesc "Show current TODOs"))
+  <> command "stats"
+    (info (Option <$> common <*> show_stats)
+          (progDesc "Summary statistics of checklist"))
+    where
+        common = location True -- can have apply to many branches
+        show_list = pure (Left List)
+        show_stats = pure (Left Stats)
+
+cli_actors :: Mod CommandFields Option
+cli_actors = mconcat
+            [ command "add" (info (Option <$> common <*> add)
                                   (progDesc "Add a TODO"))
-            , command "done" (info (Option <$> common True <*> done)
+            , command "done" (info (Option <$> common <*> done)
                                    (progDesc "Mark a TODO as done."))
-            , command "undo" (info (Option <$> common True <*> undo)
+            , command "undo" (info (Option <$> common <*> undo)
                                    (progDesc "Item needs redone!"))
-            , command "remove" (info (Option <$> common True <*> remove)
+            , command "remove" (info (Option <$> common <*> remove)
                                      (progDesc "Remove a TODO (can't be undone)"))
-            , command "stats" (info (Option <$> common False <*> showstat)
-                                    (progDesc "Summary statistics of checklist"))
             ]
     where add    = Right . Add . unwords <$> arguments str (metavar "DESCRIPTION")
           remove = Right . Remove <$> argument auto (metavar "N")
           done   = Right . Done <$> argument auto (metavar "N")
           undo   = Right . Undo <$> argument auto (metavar "N")
+          common = location False -- cannot apply to many branches
 
-          showlist = pure $ Left List
-          showstat = pure $ Left Stats
-
--- Some commands only valid on a single branch
-common :: Bool -> Parser Common
-common single = Common <$> if single then (onebranch <|> thisbranch)
-                             else (allbranches <|> onebranch <|> thisbranch)
-    where allbranches = flag' All (long "all" <> short 'a')
-          onebranch   = nullOption (reader (return . Named) <> long "branch"
-                                        <> short 'b' <> metavar "BRANCH")
-          thisbranch  = nullOption (value Head <> internal)
+location :: Bool -> Parser Location
+location many = nullOption (value Head <> internal)
+              <|> Named <$> strOption (long "branch" <> short 'b' <> metavar "BRANCH")
+              <|> if many then allbranches else empty
+    where allbranches = flag' All (long "all" <> short 'a' <> metavar "")
 
 argParser :: ParserInfo Option
-argParser = info (helper <*> (blank <|> cli))
+argParser = info (helper <*> version <*> cli)
                     (progDesc "Per-branch TODO list for Git repositories")
     where blank :: Parser Option -- user enters no arguments
-          blank = nullOption (value (Option (Common Head) (Left List)) <> internal)
+          blank = nullOption (value (Option Head (Left List)) <> internal)
+          cli = blank <|> hsubparser (cli_observers <> cli_actors)
+          version = flip abortOption (long "version" <> short 'v' <> help "Show version")
+                        (InfoMsg $ "git-checklist v" ++ showVersion V.version)
 
 main :: IO ()
 main = do
