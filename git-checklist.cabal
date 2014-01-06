@@ -19,6 +19,7 @@ bug-reports:         https://github.com/dougalstanton/git-checklist/issues
 
 category:            Desktop, Development
 build-type:          Simple
+data-files:          README.md
 -- extra-source-files:  
 cabal-version:       >=1.10
 
