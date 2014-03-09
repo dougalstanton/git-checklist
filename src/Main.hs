@@ -4,7 +4,7 @@ module Main where
 import Control.Exception (IOException, catch)
 import Control.Monad (when)
 
-import Data.List (intersperse, intercalate)
+import Data.List (intersperse, intercalate, sort)
 import Data.Monoid (mconcat)
 
 import Options.Applicative
@@ -38,8 +38,9 @@ getGitDir = head <$> git "rev-parse --show-cdup" >>= \move -> return $ move ++ "
 listBranches :: IO [String]
 listBranches = do
     root <- getGitDir
-    filter (`notElem` [".",".."]) <$> getDirectoryContents (root </> "checklist")
-        `catch` \(_ :: IOException) -> return []
+    dirs <- getDirectoryContents (root </> "checklist")
+                        `catch` \(_ :: IOException) -> return []
+    return $ sort $ filter (`notElem` [".",".."]) dirs
 
 -- Data structures!
 
