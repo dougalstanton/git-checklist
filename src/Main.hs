@@ -214,7 +214,7 @@ location :: Bool -> Parser Location
 location many = nullOption (value Head <> internal)
               <|> Named <$> strOption (long "branch" <> short 'b' <> metavar "BRANCH")
               <|> if many then allbranches else empty
-    where allbranches = flag' All (long "all" <> short 'a' <> metavar "")
+    where allbranches = flag' All (long "all" <> short 'a')
 
 argParser :: ParserInfo Option
 argParser = info (helper <*> version <*> cli)
